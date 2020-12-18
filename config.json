@@ -1,0 +1,22 @@
+{
+  "frontend": {
+    "scoreEnabled": true,
+    "spellsEnabled": false,
+    "coachesEnabled": false,
+    "blueTeam": {
+      "name": "Nibelungen eSport Worms",
+      "score": 0,
+      "coach": "",
+      "color": "rgb(0,164,255)"
+    },
+    "redTeam": {
+      "name": "MUC Urban Cats",
+      "score": 0,
+      "coach": "",
+      "color": "rgb(255,0,127)"
+    },
+    "patch": "9.19"
+  },
+  "contentPatch": "latest",
+  "contentCdn": "https://ddragon.leagueoflegends.com/cdn"
+}
