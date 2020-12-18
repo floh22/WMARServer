@@ -1,5 +1,5 @@
-## WMARServer
-# Web and Mobile Augmented Reality (WMAR) Server
+# WMARServer
+## Web and Mobile Augmented Reality (WMAR) Server
 
 Server to run virtual meeting with central object
 
