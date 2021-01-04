@@ -9,12 +9,7 @@ class State extends EventEmitter {
 
   constructor() {
     super();
-
     this.data = new StateData();
-    //this.data.config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
-    this.api('https://stream-api.munich-esports.de/config.json').then(res => {
-      this.data.config = res;
-    });
   }
 
   /*
@@ -94,10 +89,6 @@ class State extends EventEmitter {
 
   triggerUpdate(): void {
     this.emit('stateUpdate', this.data);
-  }
-
-  getConfig(): Config {
-    return this.data.config;
   }
 
   async api(url: string): Promise<any> {

@@ -9,6 +9,14 @@ import ClientLeaveEvent from '../events/ClientLeaveEvent';
 import ClientPositionEvent from '../events/ClientPositionEvent';
 import logger from '../../logging';
 import Timeout = NodeJS.Timeout;
+import Utils from '../../Utils';
+import DeleteNoteEvent from '../events/DeleteNoteEvent';
+import EditNoteEvent from '../events/EditNoteEvent';
+import NewNoteEvent from '../events/NewNoteEvent';
+import Note from '../containers/Note';
+import ObjectConfigChangeEvent from '../events/ObjectConfigChangeEvent';
+import DeleteSessionEvent from '../events/DeleteSessionEvent';
+import ClientJoin from '../events/ClientJoin';
 
 const log = logger('Session');
 
@@ -43,7 +51,7 @@ export class Session extends EventEmitter {
 
   stopLoop(): void {
     const t = this.timeout;
-    if(t === undefined) {
+    if (t === undefined) {
       log.info('Could not find Main Loop to stop');
       return;
     }
@@ -54,24 +62,52 @@ export class Session extends EventEmitter {
     this.updatePositions();
     const newTime = Date.now();
     const diff = newTime - this.lastUpdate;
+    this.SessionAge += diff;
     //log.info('tps: ' + 1000 / diff);
     this.lastUpdate = Date.now();
+  }
+
+  unload(): void {
+    this.kickAllUsers();
+    this.sendEventToUsers(new DeleteSessionEvent(this.SessionID));
+    this.currentUsers = [];
+    this.stopLoop();
+    this.dataProvider.writeCurrentDataSync(this.state.data);
   }
 
   hasUser(userId: number): boolean {
     return (this.currentUsers.find((u) => u.activeId === userId) !== undefined);
   }
 
+  addUser(activeUser: ActiveUser): Session {
+    this.sendTextToUsers(new ClientJoin(activeUser).toJson());
+    this.currentUsers.push(activeUser);
+    log.info(`${activeUser.socket.userName} | ${activeUser.activeId} joined Session ${this.SessionID}`);
+
+    this.sendAllNotesToUser(activeUser);
+    return this;
+  }
+
   sendEventToUsers(e: ClientEvent): void {
     this.currentUsers.forEach(u => {
-      this.wsServer.sendEvent(e, u.socket);
+      u.socket.send(JSON.stringify(e));
     });
   }
 
   sendTextToUsers(m: string): void {
     this.currentUsers.forEach(u => {
-      this.wsServer.sendText(m, u.socket);
+      u.socket.send(m);
     })
+  }
+
+  sendAllNotesToUser(user: ActiveUser): void {
+    this.state.data.notes.forEach(note => {
+      this.sendNoteToUser(user, note);
+    });
+  }
+
+  sendNoteToUser(user: ActiveUser, note: Note): void {
+    user.socket.send(JSON.stringify(new NewNoteEvent(note)));
   }
 
   kickAllUsers(): void {
@@ -98,7 +134,7 @@ export class Session extends EventEmitter {
   updatePositions(): void {
     const changedClients: Array<ActiveUser> = []
     this.currentUsers.forEach(u => {
-      if(u.positionChanged) {
+      if (u.positionChanged) {
         changedClients.push(u);
         u.positionChanged = false;
       }
@@ -107,6 +143,54 @@ export class Session extends EventEmitter {
       return;
     }
     this.sendTextToUsers(new ClientPositionEvent(changedClients).toJson());
+  }
+
+  updateObjectConfig(oConf: ObjectConfig): void {
+    this.state.data.objectConfig.rotation = oConf.rotation;
+    this.state.data.objectConfig.scale = oConf.scale;
+
+    this.sendEventToUsers(new ObjectConfigChangeEvent(this.state.data.objectConfig));
+  }
+
+  createNote(userId: number, message: NewNoteEvent): void {
+    if (message.note.id !== -1) {
+      log.info('Tried creating invalid Note');
+      return;
+    }
+
+    message.note.id = this.generateNoteId();
+    this.state.data.notes.push(message.note);
+    this.dataProvider.createNote(this.SessionID, message.note);
+
+    this.sendEventToUsers(new NewNoteEvent(message.note));
+  }
+
+  editNote(userId: number, message: EditNoteEvent): void {
+    this.state.data.notes.forEach(n => {
+      if (n.id == message.note.id) {
+        n = message.note;
+      }
+    });
+    this.dataProvider.editNote(this.SessionID, message.note);
+
+    this.sendEventToUsers(new EditNoteEvent(message.note))
+  }
+
+  deleteNote(userId: number, message: DeleteNoteEvent): void {
+
+    if (userId !== message.userId) {
+      log.info('User tried falsifying their identity. Kinda WeirdChamp');
+    }
+
+    this.dataProvider.deleteNote(this.SessionID, message.id)
+
+    this.sendEventToUsers(new DeleteNoteEvent(userId, message.id));
+  }
+
+  generateNoteId(): number {
+    const currentIDs: number[] = [];
+    this.state.data.notes.forEach((n) => currentIDs.push(n.id || 0));
+    return Utils.firstMissingPositive(currentIDs);
   }
 
 }

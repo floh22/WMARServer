@@ -23,6 +23,7 @@ import LoginEvent from "../types/events/LoginEvent";
 import JoinSessionEvent from "../types/events/JoinSessionEvent";
 import ActiveUser from "../types/lcu/ActiveUser";
 import { info } from "console";
+import UpdateUserInfoEvent from "../types/events/UpdateUserInfoEvent";
 
 const log = logger("websocket");
 
@@ -30,7 +31,6 @@ class WebSocketServer {
   server: ws.Server;
   sessionManager: SessionManager;
   clientList: Array<CustomSocket> = [];
-  exampleClients: Array<WebSocket> = [];
   heartbeatInterval?: NodeJS.Timeout;
   config: any;
 
@@ -60,22 +60,6 @@ class WebSocketServer {
         }
       }
     });
-
-    /*
-    state.on("stateUpdate", (newState: StateData) => {
-      newState.config = this.config;
-      this.sendEvent(new NewStateEvent(newState));
-    });
-    state.on("champSelectStarted", () =>
-      this.sendEvent(new ChampSelectStartedEvent())
-    );
-    state.on("champSelectEnded", () =>
-      this.sendEvent(new ChampSelectEndedEvent())
-    );
-    state.on("newAction", (action) => {
-      this.sendEvent(new NewActionEvent(action));
-    });
-    */
 
   }
 
@@ -140,11 +124,11 @@ class WebSocketServer {
         const s = this.clientList.find((c) => c === socket);
         if (s !== undefined)
           s.isAlive = true;
-        break;
+          break;
       case 'clientPosition':
-        const userId = socket.userId;
+        let userId = socket.userId;
         if(userId === undefined) {
-          log.info('Unregistered client sent position. Ignoring');
+          log.info('Unregistered client message. Ignoring');
           break;
         }
         const userSession = this.sessionManager.getUsersSession(userId)
@@ -153,7 +137,15 @@ class WebSocketServer {
           break;
         }
         userSession.updateUsersPosition(message);
+        break;
       case 'clientLeave':
+        const userId2 = socket.userId;
+        if(userId2 === undefined) {
+          log.info('Unregistered client message. Ignoring');
+          break;
+        }
+        this.sessionManager.dropUser(userId2);
+        socket.close();
         break;
       case 'clientJoin':
         log.info('A client sent clientJoin event... this shouldn\'t be possible');
@@ -168,10 +160,28 @@ class WebSocketServer {
         this.sendEvent(new JoinSessionEvent(result.state.data.id, result.state.data.sessionName, result.state.data.host, result.state.data.objectConfig), socket);
         break;
       case 'newNote':
+        userId = socket.userId;
+        if(userId === undefined) {
+          log.info('Unregistered client message. Ignoring');
+          break;
+        }
+        this.sessionManager.createNote(userId, message);
         break;
       case 'editNote':
+        userId = socket.userId;
+        if(userId === undefined) {
+          log.info('Unregistered client message. Ignoring');
+          break;
+        }
+        this.sessionManager.editNote(userId, message);
         break;
       case 'deleteNote':
+        userId = socket.userId;
+        if(userId === undefined) {
+          log.info('Unregistered client message. Ignoring');
+          break;
+        }
+        this.sessionManager.deleteNote(userId, message);
         break;
       case 'newSession':
         const newSession = this.sessionManager.createSession(JSON.parse(message), socket);
@@ -188,13 +198,23 @@ class WebSocketServer {
         this.sessionManager.deleteSession(JSON.parse(message).sessionId);
         break;
       case 'objectConfigChange':
+        userId = socket.userId;
+        if(userId === undefined) {
+          log.info('Unregistered client message. Ignoring');
+          break;
+        }
+        const session = this.sessionManager.getUsersSession(userId);
+        if(session === undefined) {
+          log.info('Attempted loading invalid Session');
+          break;
+        }
+        session.updateObjectConfig(JSON.parse(message));
         break;
       case 'sessionList':
         this.sendEvent(new SessionListEvent(this.sessionManager.getReducedSessions()), socket);
         break;
       case 'objectList':
         const event = new ObjectListEvent(this.sessionManager.objects);
-        log.info("Sending Object List event: " + JSON.stringify(event));
         this.sendEvent(event, socket);
         break;
       case 'error':
@@ -214,6 +234,12 @@ class WebSocketServer {
         }
         break;
       case 'updateUserInfo':
+        const o: UpdateUserInfoEvent = JSON.parse(message);
+        if(socket.userId !== o.userId) {
+          log.info('User tried falsifying identity');
+          break;
+        }
+        this.updateUserSocket(socket.userId, o);
         break;
       default:
         log.info('Unimplemented eventType of: ' + eventType + ' received!');
@@ -221,12 +247,13 @@ class WebSocketServer {
     }
   }
 
-  async api(url: string): Promise<any> {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(response.statusText);
+  updateUserSocket(userId: number, userUpdate: UpdateUserInfoEvent): void {
+    const u = this.clientList.find((u) => u.userId === userId);
+    if(u === undefined) {
+      log.info('Attempted to update invalid user');
+      return;
     }
-    return response.json() as Promise<any>;
+    u.userName = userUpdate.name;
   }
 
 }

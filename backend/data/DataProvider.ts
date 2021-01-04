@@ -7,6 +7,7 @@ import logger from '../logging';
 import { Session } from '../types/lcu/Session';
 import { StateData } from '../types/dto';
 import ObjectConfig from '../types/containers/ObjectConfig';
+import Note from '../types/containers/Note';
 
 const log = logger('DataProvider');
 
@@ -54,12 +55,30 @@ export default class DataProvider extends EventEmitter {
 
     writeCurrentData(data: StateData): void {
         const sFolder = sessionFolder + data.id + '/';
+        const fileName = path.join(sFolder, 'SessionState.json');
+        // Move to async write 
+        // fs.writeFileSync(path.join(sFolder, 'SessionState.json'), JSON.stringify(data, null, 2), { encoding: 'utf-8' });
+        fs.writeFile( fileName, JSON.stringify(data, null, 2), function writeJSON(err) {
+            if(err) return log.info('Could not write Session:' + err);
+            log.info('Writing Session to ' + fileName);
+        });
+    }
+
+    writeCurrentDataSync(data: StateData): void {
+        const sFolder = sessionFolder + data.id + '/';
         fs.writeFileSync(path.join(sFolder, 'SessionState.json'), JSON.stringify(data, null, 2), { encoding: 'utf-8' });
     }
 
     readSessionData(sessionId: number): StateData {
         const sFolder = sessionFolder + sessionId + '/';
-        return JSON.parse(fs.readFileSync(path.join(sFolder, 'SessionState.json'), 'utf-8'));
+        const tempSd = JSON.parse(fs.readFileSync(path.join(sFolder, 'SessionState.json'), 'utf-8'));
+
+        const initNotes: Note[] = [];
+        tempSd.notes.forEach((nId: number) => {
+            initNotes.push(this.readNote(sessionId, nId));
+        });
+        tempSd.notes = initNotes;
+        return tempSd;
     }
 
     getSessions(): Array<number> {
@@ -113,6 +132,77 @@ export default class DataProvider extends EventEmitter {
         log.info('Deleting Session');
         deleteFolderRecursive(specificSessionFolder);
         log.info('Session deleted from file');
+    }
+
+    createNote(sessionId: number, note: Note): void {
+
+        this.writeNote(sessionId, note);
+        
+    }
+
+    editNote(sessionId: number, newNote: Note): void {
+        this.writeNote(sessionId, newNote);
+    }
+
+    writeNote(sessionId: number, note: Note): void {
+        if (!fs.existsSync(sessionFolder)) {
+            log.warn('Session folder not init! Returning');
+            return;
+        }
+
+        const specificSessionFolder = sessionFolder + sessionId + '/';
+
+        if (!fs.existsSync(specificSessionFolder)) {
+            log.warn('Tried writing Note to Session that does not exist!')
+            return;
+        }
+
+        const fileName = path.join(specificSessionFolder , 'Note_' + note.id + '.json');
+
+        fs.writeFile( fileName, JSON.stringify(note, null, 2), function writeJSON(err) {
+            if(err) return log.info('Could not write Note:' + err);
+            log.info('Writing note to ' + fileName);
+        });
+    }
+
+    deleteNote(sessionId: number, noteId: number): void {
+        if (!fs.existsSync(sessionFolder)) {
+            log.warn('Session folder not init! Returning');
+            return;
+        }
+
+        const specificSessionFolder = sessionFolder + sessionId + '/';
+
+        if (!fs.existsSync(specificSessionFolder)) {
+            log.warn('Tried writing Note to Session that does not exist!')
+            return;
+        }
+
+        const fileName = path.join(specificSessionFolder , 'Note_' + noteId + '.json');
+
+        fs.unlink(fileName, (err) => {
+            log.info('Could not delete Note: ' + err);
+            return;
+        })
+
+        log.info('Note removed');
+    }
+
+
+    readNote(sessionId: number, noteId: number): Note {
+        if (!fs.existsSync(sessionFolder)) {
+            log.warn('Session folder not init! Returning');
+            throw 'Session folder not init!';
+        }
+
+        const specificSessionFolder = sessionFolder + sessionId + '/';
+
+        if (!fs.existsSync(specificSessionFolder)) {
+            log.warn('Tried reading Note from Session that does not exist!')
+            throw 'Attempted to read invalid Session!';
+        }
+
+        return JSON.parse(fs.readFileSync(path.join(specificSessionFolder , 'Note_' + noteId + '.json'), 'utf-8'));
     }
 
 }

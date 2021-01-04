@@ -3,11 +3,13 @@ import ObjectPosition from './ObjectPosition';
 export default class Note {
     id: number;
     pos: ObjectPosition;
-    text: string;
+    type: string;
+    content: string;
 
-    constructor({ id, pos, text }: never) {
+    constructor(id: number, pos: ObjectPosition, type: string, content: string) {
         this.id = id;
         this.pos = pos;
-        this.text = text;
+        this.type = type;
+        this.content = content;
     }
 }

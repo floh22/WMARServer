@@ -1,12 +1,12 @@
+import Note from '../containers/Note';
+import ObjectPosition from '../containers/ObjectPosition';
 import ClientEvent from './ClientEvent';
 
 export default class EditNoteEvent implements ClientEvent {
     eventType = 'editNote';
-    id: number;
-    text: string;
+    note: Note;
 
-    constructor(id: number, text: string) {
-        this.id = id;
-        this.text = text;
+    constructor(note: Note) {
+        this.note = note;
     }
 }

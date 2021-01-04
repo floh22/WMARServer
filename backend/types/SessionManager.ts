@@ -10,6 +10,8 @@ import Utils from '../Utils';
 import CustomSocket from '../websocket/CustomSocket';
 import DataProvider from '../data/DataProvider';
 import DeleteSessionEvent from './events/DeleteSessionEvent';
+import ClientLeaveEvent from './events/ClientLeaveEvent';
+import UpdateUserInfoEvent from './events/UpdateUserInfoEvent';
 
 const log = logger('sessionM.');
 
@@ -73,9 +75,9 @@ export default class SessionManager {
             log.info('User tried to join non existant session');
             return undefined;
         } else {
-            session.sendEventToUsers(new ClientJoin(activeUser));
+            session.sendTextToUsers(new ClientJoin(activeUser).toJson());
             session.currentUsers.push(activeUser);
-            log.info(activeUser.socket.userName + ' join Session ' + sessionId);
+            log.info(`${activeUser.socket.userName} | ${activeUser.activeId} joined Session ${sessionId}`);
             return session;
         }
     }
@@ -84,7 +86,16 @@ export default class SessionManager {
         const userSession = this.sessionList.find((s) => s.hasUser(userId))
         if (userSession === undefined)
             return;
-        userSession.currentUsers.filter((u) => u.activeId !== userId);
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        const user = this.getUser(userId)!;
+        userSession.currentUsers = userSession.currentUsers.filter((u) => u.activeId !== userId);
+        userSession.sendEventToUsers(new ClientLeaveEvent(userId));
+        log.info(`${user.socket.userName} | ${user.activeId} left Session ` + userSession.SessionID);
+
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        this.wsServer!.clientList = this.wsServer!.clientList.filter((s) => s.userId! !== userId);
+
+        log.info(`${user.socket.userName} | ${user.activeId} disconnected `);
     }
 
     createSession({ sessionName, objectConfig }: any, socket: CustomSocket): Session | undefined {
@@ -97,9 +108,17 @@ export default class SessionManager {
         log.info('Creating new Session by ' + socket.userName + ', name: ' + sessionName + ', id: ' + newId);
         const defaultConfig = this.dataProvider.getDefaultObjectConfig(objectConfig.objectType)
         defaultConfig.objectType = objectConfig.objectType;
-        const newSession = new Session(newId, socket.userName || 'defaultUser', sessionName, defaultConfig, this.dataProvider, this.wsServer);
+        const newSession = new Session(newId, socket.userName || 'defaultUser',
+            sessionName,
+            defaultConfig,
+            this.dataProvider,
+            this.wsServer);
         log.info('Session created. Adding host to session');
-        newSession.currentUsers.push(ActiveUser.toActiveUser({ userId: socket.userId || '-1', position: { x: 0, y: 0, z: 0 }, rotation: { w: 0, x: 0, y: 0, z: 0 } }, socket))
+        newSession.currentUsers.push( ActiveUser.toActiveUser({ 
+            userId: socket.userId || '-1',
+            position: { x: 0, y: 0, z: 0 },
+            rotation: { w: 0, x: 0, y: 0, z: 0 } }, 
+            socket));
         log.info('Writing Session to file');
         this.dataProvider.createSession(newSession.state.data);
         this.sessionList.push(newSession);
@@ -118,7 +137,11 @@ export default class SessionManager {
         this.dataProvider.getSessions().forEach((sName) => {
             log.info('Loading Session ' + sName);
             const sData = this.dataProvider.readSessionData(sName);
-            const newSession = new Session(sData.id, sData.host, sData.sessionName, sData.objectConfig, this.dataProvider, ws);
+            const newSession = new Session(sData.id,
+                sData.host, sData.sessionName,
+                sData.objectConfig,
+                this.dataProvider,
+                ws);
             this.sessionList.push(newSession);
             newSession.startLoop();
             log.info('Session ' + sName + ' loaded');
@@ -128,11 +151,7 @@ export default class SessionManager {
 
     unloadSession(session: Session): void {
         log.info('Unloading Session' + session.SessionID);
-        session.kickAllUsers();
-        session.sendEventToUsers(new DeleteSessionEvent(session.SessionID));
-        session.currentUsers = [];
-        session.stopLoop();
-        this.dataProvider.writeCurrentData(session.state.data);
+        session.unload();
         this.sessionList.filter((s) => s.SessionID !== session.SessionID);
         log.info('Session' + session.SessionID + ' unloaded');
     }
@@ -153,5 +172,23 @@ export default class SessionManager {
         }
         this.unloadSession(s);
         this.dataProvider.deleteSession(sessionId);
+    }
+
+    createNote(userId: number, message: string): void {
+        const s = this.getUsersSession(userId);
+        if(s === undefined) return;
+        s.createNote(userId, JSON.parse(message));
+    }
+
+    editNote(userId: number, message: string): void {
+        const s = this.getUsersSession(userId);
+        if(s === undefined) return;
+        s.editNote(userId, JSON.parse(message));
+    }
+
+    deleteNote(userId: number, message: string): void {
+        const s = this.getUsersSession(userId);
+        if(s === undefined) return;
+        s.deleteNote(userId, JSON.parse(message));
     }
 }

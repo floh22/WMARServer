@@ -8,4 +8,8 @@ export default class ClientJoin implements ClientEvent {
     constructor (activeUser: ActiveUser) {
         this.user = activeUser;
     }
+
+    toJson(): string {
+        return JSON.stringify({ evenType: this.eventType, user: this.user.toJson });
+    }
 }
