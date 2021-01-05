@@ -17,8 +17,8 @@ export default class ActiveUser {
         this.positionChanged = false;
     }
 
-    toJson(): string {
-        return JSON.stringify({ id: this.activeId, position: this.position, rotation: this.rotation, userName: this.socket.userName || 'defaultUser' });
+    toJson(): any {
+        return { activeId: this.activeId, position: this.position, rotation: this.rotation, userName: this.socket.userName || 'defaultUser' };
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

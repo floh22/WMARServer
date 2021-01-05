@@ -80,10 +80,10 @@ export class Session extends EventEmitter {
   }
 
   addUser(activeUser: ActiveUser): Session {
-    this.sendTextToUsers(new ClientJoin(activeUser).toJson());
     this.currentUsers.push(activeUser);
     log.info(`${activeUser.socket.userName} | ${activeUser.activeId} joined Session ${this.SessionID}`);
 
+    this.sendEventToUsers(new ClientJoin(activeUser).toJson());
     this.sendAllNotesToUser(activeUser);
     return this;
   }

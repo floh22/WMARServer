@@ -151,8 +151,9 @@ class WebSocketServer {
         log.info('A client sent clientJoin event... this shouldn\'t be possible');
         break;  
       case 'joinSession':
-        const aU = ActiveUser.toActiveUser({ userId: socket.userId || '-1', position: { x: 0, y: 0, z: 0 }, rotation: { w: 0, x: 0, y: 0, z: 0 } }, socket);
-        const result = this.sessionManager.addUserToSession(JSON.parse(message).sessionId, aU);
+        const obj = JSON.parse(message);
+        const aU = ActiveUser.toActiveUser({ userId: socket.userId || '-1', position: obj.position , rotation: obj.rotation }, socket);
+        const result = this.sessionManager.addUserToSession(obj.sessionId, aU);
         if (result === undefined) {
           this.sendEvent(new ErrorEvent('Cannot join session: Session does not exist!'), socket);
           break;
@@ -160,12 +161,12 @@ class WebSocketServer {
         this.sendEvent(new JoinSessionEvent(result.state.data.id, result.state.data.sessionName, result.state.data.host, result.state.data.objectConfig), socket);
         break;
       case 'newNote':
-        userId = socket.userId;
-        if(userId === undefined) {
+        const userId3 = socket.userId;
+        if(userId3 === undefined) {
           log.info('Unregistered client message. Ignoring');
           break;
         }
-        this.sessionManager.createNote(userId, message);
+        this.sessionManager.createNote(userId3, message);
         break;
       case 'editNote':
         userId = socket.userId;

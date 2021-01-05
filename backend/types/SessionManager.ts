@@ -74,12 +74,7 @@ export default class SessionManager {
         if (session === undefined) {
             log.info('User tried to join non existant session');
             return undefined;
-        } else {
-            session.sendTextToUsers(new ClientJoin(activeUser).toJson());
-            session.currentUsers.push(activeUser);
-            log.info(`${activeUser.socket.userName} | ${activeUser.activeId} joined Session ${sessionId}`);
-            return session;
-        }
+        } else return session.addUser(activeUser);
     }
 
     dropUser(userId: number): void {
@@ -123,6 +118,7 @@ export default class SessionManager {
         this.dataProvider.createSession(newSession.state.data);
         this.sessionList.push(newSession);
         newSession.startLoop();
+        this.wsServer.sendEvent(new ClientJoin(newSession.currentUsers[0]).toJson(), socket);
         log.info('Session created');
         return newSession;
     }
