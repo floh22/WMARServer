@@ -86,11 +86,21 @@ export default class SessionManager {
         userSession.currentUsers = userSession.currentUsers.filter((u) => u.activeId !== userId);
         userSession.sendEventToUsers(new ClientLeaveEvent(userId));
         log.info(`${user.socket.userName} | ${user.activeId} left Session ` + userSession.SessionID);
+    }
 
+    disconnectUser(userId: number): void {
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        const user = this.wsServer!.clientList.find((s) => s.userId === userId);
+        if(user === undefined)
+            return;
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         this.wsServer!.clientList = this.wsServer!.clientList.filter((s) => s.userId! !== userId);
+        log.info(`${user.userName} | ${user.userId} disconnected `);
+    }
 
-        log.info(`${user.socket.userName} | ${user.activeId} disconnected `);
+    updateUser(e: UpdateUserInfoEvent, s: CustomSocket): void {
+        const session = this.getUsersSession(s.userId!);
+        session!.sendEventToUsers(new UpdateUserInfoEvent(s.userId!, e.userName));
     }
 
     createSession({ sessionName, objectConfig }: any, socket: CustomSocket): Session | undefined {
@@ -106,6 +116,7 @@ export default class SessionManager {
         const newSession = new Session(newId, socket.userName || 'defaultUser',
             sessionName,
             defaultConfig,
+            [],
             this.dataProvider,
             this.wsServer);
         log.info('Session created. Adding host to session');
@@ -136,11 +147,13 @@ export default class SessionManager {
             const newSession = new Session(sData.id,
                 sData.host, sData.sessionName,
                 sData.objectConfig,
+                sData.notes,
                 this.dataProvider,
                 ws);
             this.sessionList.push(newSession);
+            this.usedIds.push(newSession.SessionID);
             newSession.startLoop();
-            log.info('Session ' + sName + ' loaded');
+            log.info('Session ' + sName + ' loaded. Central Object: ' + newSession.state.data.objectConfig.objectType + ' with ' + newSession.state.data.notes.length + ' Notes.');
         })
         log.info('All Sessions loaded');
     }

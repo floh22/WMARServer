@@ -59,6 +59,12 @@ class WebSocketServer {
           log.info('Unexpected packet received');
         }
       }
+
+      socket.onclose = (ev): void => {
+        socket.inSession = false;
+        this.clientList = this.clientList.filter((s) => s !== socket);
+        log.info(`${socket.userName} | ${socket.userId} disconnected `);
+      }
     });
 
   }
@@ -76,9 +82,10 @@ class WebSocketServer {
 
   handleConnection(socket: CustomSocket, request: http.IncomingMessage): void {
     this.clientList.push(socket);
-    log.info('New connection established with client at ' + request.connection.remoteAddress);
-    socket.send(JSON.stringify(new SessionListEvent(this.sessionManager.getReducedSessions())));
+    const ip = request.connection.remoteAddress!.replace(/^.*:/, '');
+    //socket.send(JSON.stringify(new SessionListEvent(this.sessionManager.getReducedSessions())));
     socket.isAlive = true;
+    socket.ip = ip;
   }
 
   sendEvent(event: ClientEvent, client: WebSocket): void {
@@ -106,7 +113,7 @@ class WebSocketServer {
       } else {
         log.info('Heartbeat not replied to in time. Dropping client');
         const activeUser = this.sessionManager.getUserBySocket(c);
-        if(activeUser === undefined) {
+        if (activeUser === undefined) {
           log.info('Couldnt map Websocket to ActiveUser. Were they not in a session?');
         } else {
           this.sessionManager.dropUser(activeUser.activeId);
@@ -124,15 +131,15 @@ class WebSocketServer {
         const s = this.clientList.find((c) => c === socket);
         if (s !== undefined)
           s.isAlive = true;
-          break;
+        break;
       case 'clientPosition':
         let userId = socket.userId;
-        if(userId === undefined) {
+        if (userId === undefined) {
           log.info('Unregistered client message. Ignoring');
           break;
         }
         const userSession = this.sessionManager.getUsersSession(userId)
-        if(userSession === undefined) {
+        if (userSession === undefined) {
           log.info('Client sent position without Session');
           break;
         }
@@ -140,59 +147,62 @@ class WebSocketServer {
         break;
       case 'clientLeave':
         const userId2 = socket.userId;
-        if(userId2 === undefined) {
+        if (userId2 === undefined) {
           log.info('Unregistered client message. Ignoring');
           break;
         }
-        this.sessionManager.dropUser(userId2);
+        if(socket.inSession)
+          this.sessionManager.dropUser(userId2);
         socket.close();
         break;
       case 'clientJoin':
         log.info('A client sent clientJoin event... this shouldn\'t be possible');
-        break;  
+        break;
       case 'joinSession':
         const obj = JSON.parse(message);
-        const aU = ActiveUser.toActiveUser({ userId: socket.userId || '-1', position: obj.position , rotation: obj.rotation }, socket);
+        const aU = ActiveUser.toActiveUser({ userId: socket.userId || '-1', position: obj.position, rotation: obj.rotation }, socket);
         const result = this.sessionManager.addUserToSession(obj.sessionId, aU);
         if (result === undefined) {
           this.sendEvent(new ErrorEvent('Cannot join session: Session does not exist!'), socket);
           break;
         }
+        socket.inSession = true;
         this.sendEvent(new JoinSessionEvent(result.state.data.id, result.state.data.sessionName, result.state.data.host, result.state.data.objectConfig), socket);
         break;
       case 'newNote':
         const userId3 = socket.userId;
-        if(userId3 === undefined) {
+        if (userId3 === undefined) {
           log.info('Unregistered client message. Ignoring');
           break;
         }
         this.sessionManager.createNote(userId3, message);
         break;
       case 'editNote':
-        userId = socket.userId;
-        if(userId === undefined) {
+        const userId5 = socket.userId;
+        if (userId5 === undefined) {
           log.info('Unregistered client message. Ignoring');
           break;
         }
-        this.sessionManager.editNote(userId, message);
+        this.sessionManager.editNote(userId5, message);
         break;
       case 'deleteNote':
-        userId = socket.userId;
-        if(userId === undefined) {
+        const userId6 = socket.userId;
+        if (userId6 === undefined) {
           log.info('Unregistered client message. Ignoring');
           break;
         }
-        this.sessionManager.deleteNote(userId, message);
+        this.sessionManager.deleteNote(userId6, message);
         break;
       case 'newSession':
         const newSession = this.sessionManager.createSession(JSON.parse(message), socket);
-        if(newSession === undefined) {
+        if (newSession === undefined) {
           this.sendEvent(new ErrorEvent('Could not create Session!'), socket);
           break;
         }
         this.clientList.forEach((c) => {
           this.sendEvent(new SessionListEvent(this.sessionManager.getReducedSessions()), c);
         })
+        socket.inSession = true;
         this.sendEvent(new NewSessionEvent(newSession.SessionID, newSession.state.data.host, newSession.state.data.sessionName, newSession.state.data.objectConfig), socket);
         break;
       case 'deleteSession':
@@ -200,12 +210,12 @@ class WebSocketServer {
         break;
       case 'objectConfigChange':
         userId = socket.userId;
-        if(userId === undefined) {
+        if (userId === undefined) {
           log.info('Unregistered client message. Ignoring');
           break;
         }
         const session = this.sessionManager.getUsersSession(userId);
-        if(session === undefined) {
+        if (session === undefined) {
           log.info('Attempted loading invalid Session');
           break;
         }
@@ -223,24 +233,37 @@ class WebSocketServer {
         break;
       case 'login':
         const loginEvent = JSON.parse(message);
-        if(loginEvent.userId === -1) {
+        if (loginEvent.userId === -1) {
           const e = new LoginEvent(this.sessionManager.generateNewUserID(), loginEvent.userName);
           const c = this.clientList.find((s) => s === socket);
-          if(c !== undefined) {
+          if (c !== undefined) {
             c.userName = e.userName;
             c.userId = e.userId
-            log.info(JSON.stringify(e));
+            log.info('Login by User ' + e.userId + ' (' + e.userName + '): ' + socket.ip);
             this.sendEvent(e, socket);
           }
         }
         break;
       case 'updateUserInfo':
         const o: UpdateUserInfoEvent = JSON.parse(message);
-        if(socket.userId !== o.userId) {
+        if (socket.userId !== o.userId) {
           log.info('User tried falsifying identity');
           break;
         }
+        log.info('User ' + socket.userId + " changed username from " + socket.userName + ' to ' + o.userName);
         this.updateUserSocket(socket.userId, o);
+        if(socket.inSession) {
+          this.sessionManager.updateUser(o, socket);
+        }
+        break;
+      case 'clientSessionLeave':
+        const userId4 = socket.userId;
+        if (userId4 === undefined) {
+          log.info('Unregistered client message. Ignoring');
+          break;
+        }
+        this.sessionManager.dropUser(userId4);
+        socket.inSession = false;
         break;
       default:
         log.info('Unimplemented eventType of: ' + eventType + ' received!');
@@ -250,11 +273,11 @@ class WebSocketServer {
 
   updateUserSocket(userId: number, userUpdate: UpdateUserInfoEvent): void {
     const u = this.clientList.find((u) => u.userId === userId);
-    if(u === undefined) {
+    if (u === undefined) {
       log.info('Attempted to update invalid user');
       return;
     }
-    u.userName = userUpdate.name;
+    u.userName = userUpdate.userName;
   }
 
 }

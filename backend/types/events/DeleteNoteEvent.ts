@@ -5,7 +5,7 @@ export default class DeleteNoteEvent implements ClientEvent {
     id: number;
     userId: number;
 
-    constructor(id: number, userId: number) {
+    constructor(userId: number, id: number) {
         this.id = id;
         this.userId = userId;
     }

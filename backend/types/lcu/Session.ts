@@ -32,7 +32,7 @@ export class Session extends EventEmitter {
   timeout?: Timeout;
 
 
-  constructor(sessionId: number, host: string, sessionName: string, objectConfig: ObjectConfig, dataProvider: DataProvider, wsServer: WebSocketServer) {
+  constructor(sessionId: number, host: string, sessionName: string, objectConfig: ObjectConfig, notes: Array<Note>, dataProvider: DataProvider, wsServer: WebSocketServer) {
     super();
     this.wsServer = wsServer;
     this.SessionAge = 0;
@@ -43,6 +43,7 @@ export class Session extends EventEmitter {
     this.state.data.sessionName = sessionName;
     this.state.data.id = sessionId;
     this.state.data.objectConfig = objectConfig;
+    this.state.data.notes = notes;
   }
 
   startLoop(): void {
@@ -160,7 +161,7 @@ export class Session extends EventEmitter {
 
     message.note.id = this.generateNoteId();
     this.state.data.notes.push(message.note);
-    this.dataProvider.createNote(this.SessionID, message.note);
+    this.dataProvider.createNote(this.state.data, message.note);
 
     this.sendEventToUsers(new NewNoteEvent(message.note));
   }
@@ -171,7 +172,7 @@ export class Session extends EventEmitter {
         n = message.note;
       }
     });
-    this.dataProvider.editNote(this.SessionID, message.note);
+    this.dataProvider.editNote(this.state.data, message.note);
 
     this.sendEventToUsers(new EditNoteEvent(message.note))
   }
@@ -182,7 +183,10 @@ export class Session extends EventEmitter {
       log.info('User tried falsifying their identity. Kinda WeirdChamp');
     }
 
-    this.dataProvider.deleteNote(this.SessionID, message.id)
+    this.dataProvider.deleteNote(this.state.data, message.id);
+    this.state.data.notes = this.state.data.notes.filter((n) => {
+      n.id != message.id;
+    })
 
     this.sendEventToUsers(new DeleteNoteEvent(userId, message.id));
   }

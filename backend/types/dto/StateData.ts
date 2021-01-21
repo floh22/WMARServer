@@ -16,7 +16,7 @@ export class StateData {
   toJSON(): any {
     const noteIds: number[] = [];
     this.notes.forEach((n) => noteIds.push(n.id || 0));
-    return { objectConfig: this.objectConfig, host: this.host, sessionName: this.sessionName, id: this.id, notes: noteIds };
+    return { objectConfig: this.objectConfig, host: this.host, sessionName: this.sessionName, id: this.id };
   }
 
 
