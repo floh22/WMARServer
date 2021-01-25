@@ -8,4 +8,8 @@ export default class ObjectPosition {
         this.y = y;
         this.z = z;
     }
+
+    getString(): string {
+        return 'x: ' + this.x + ' y: ' + this.y + ' z: ' + this.z;
+    }
 }

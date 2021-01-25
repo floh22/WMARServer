@@ -47,10 +47,12 @@ class WebSocketServer {
 
     this.server.on('connection', (socket: CustomSocket, request) => {
 
+      //If a new client has been determined, handle new connection
       if (this.clientList.find((c) => c === socket) === undefined) {
         this.handleConnection(socket, request);
       }
 
+      //Handle messages by connected clients
       socket.onmessage = (message): void => {
         const eventType = JSON.parse(message.data).eventType
         if (eventType) {
@@ -60,6 +62,7 @@ class WebSocketServer {
         }
       }
 
+      //Handle closing connections
       socket.onclose = (ev): void => {
         socket.inSession = false;
         this.clientList = this.clientList.filter((s) => s !== socket);
@@ -69,8 +72,10 @@ class WebSocketServer {
 
   }
 
+  //Heartbeat interval for client <-> server heartbeats to detect zombie clients
+  //TODO: sometimes clients dont respond due to load loading times for objects. Detect this or increase heartbeat time
   startHeartbeat(): void {
-    this.heartbeatInterval = setInterval(this.sendHeartbeat, 10000);
+    this.heartbeatInterval = setInterval(this.sendHeartbeat, 30000);
   }
 
   stopHeartbeat(): void {
@@ -82,8 +87,8 @@ class WebSocketServer {
 
   handleConnection(socket: CustomSocket, request: http.IncomingMessage): void {
     this.clientList.push(socket);
+    //Get IPv4 Address of the client
     const ip = request.connection.remoteAddress!.replace(/^.*:/, '');
-    //socket.send(JSON.stringify(new SessionListEvent(this.sessionManager.getReducedSessions())));
     socket.isAlive = true;
     socket.ip = ip;
   }
@@ -106,6 +111,7 @@ class WebSocketServer {
     const heartbeatEvent = new HeartbeatEvent();
     const heartbeatSerialized = JSON.stringify(heartbeatEvent);
 
+    //Drop unresponsive clients
     this.clientList.forEach((c) => {
       if (c.isAlive) {
         c.send(heartbeatSerialized)
@@ -126,6 +132,8 @@ class WebSocketServer {
   }
 
   receiveMessage(socket: CustomSocket, eventType: string, message: string): void {
+
+    //Determine behavior depending on eventType. This is probably the worst way to implement this but I couldnt care less
     switch (eventType) {
       case 'heartbeat':
         const s = this.clientList.find((c) => c === socket);
@@ -151,7 +159,7 @@ class WebSocketServer {
           log.info('Unregistered client message. Ignoring');
           break;
         }
-        if(socket.inSession)
+        if (socket.inSession)
           this.sessionManager.dropUser(userId2);
         socket.close();
         break;
@@ -183,6 +191,7 @@ class WebSocketServer {
           log.info('Unregistered client message. Ignoring');
           break;
         }
+        log.info('Note Update Event');
         this.sessionManager.editNote(userId5, message);
         break;
       case 'deleteNote':
@@ -208,7 +217,7 @@ class WebSocketServer {
       case 'deleteSession':
         this.sessionManager.deleteSession(JSON.parse(message).sessionId);
         break;
-      case 'objectConfigChange':
+      case 'objectConfig':
         userId = socket.userId;
         if (userId === undefined) {
           log.info('Unregistered client message. Ignoring');
@@ -252,7 +261,7 @@ class WebSocketServer {
         }
         log.info('User ' + socket.userId + " changed username from " + socket.userName + ' to ' + o.userName);
         this.updateUserSocket(socket.userId, o);
-        if(socket.inSession) {
+        if (socket.inSession) {
           this.sessionManager.updateUser(o, socket);
         }
         break;
@@ -264,6 +273,22 @@ class WebSocketServer {
         }
         this.sessionManager.dropUser(userId4);
         socket.inSession = false;
+        break;
+      case 'requestNotes':
+        log.info(`Note List Request from ${socket.userName} | ${socket.userId}`);
+        const userId7 = socket.userId;
+        if (userId7 === undefined) {
+          log.info('Unregistered client message. Ignoring');
+          break;
+        }
+        const user = this.sessionManager.getUser(userId7)
+        const userSession2 = this.sessionManager.getUsersSession(userId7);
+        if (userSession2 === undefined || user === undefined) {
+          log.info('Could not find users Session');
+          break;
+        }
+        log.info('Sending all Notes');
+        userSession2.sendAllNotesToUser(user);
         break;
       default:
         log.info('Unimplemented eventType of: ' + eventType + ' received!');

@@ -27,6 +27,7 @@ export default class SessionManager {
         this.objects = new ObjectList();
     }
 
+    //Reduced Sessions for session list events to send basic information about each session only
     getReducedSessions(): Array<ReducedSession> {
         const outSessions: Array<ReducedSession> = [];
         this.sessionList.forEach((session) => {
@@ -54,6 +55,7 @@ export default class SessionManager {
         return user;
     }
 
+    //Each user gets a new ID on join at runtime. No stored or fixed IDs per user. Maybe in the future?
     generateNewUserID(): number {
         const currentIDs: number[] = [];
         const ws = this.wsServer;
@@ -77,6 +79,7 @@ export default class SessionManager {
         } else return session.addUser(activeUser);
     }
 
+    //Remove user from Session
     dropUser(userId: number): void {
         const userSession = this.sessionList.find((s) => s.hasUser(userId))
         if (userSession === undefined)
@@ -88,6 +91,7 @@ export default class SessionManager {
         log.info(`${user.socket.userName} | ${user.activeId} left Session ` + userSession.SessionID);
     }
 
+    //Disconnect User from Server
     disconnectUser(userId: number): void {
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         const user = this.wsServer!.clientList.find((s) => s.userId === userId);
@@ -98,6 +102,7 @@ export default class SessionManager {
         log.info(`${user.userName} | ${user.userId} disconnected `);
     }
 
+    //Update User info such as Username
     updateUser(e: UpdateUserInfoEvent, s: CustomSocket): void {
         const session = this.getUsersSession(s.userId!);
         session!.sendEventToUsers(new UpdateUserInfoEvent(s.userId!, e.userName));
@@ -108,11 +113,17 @@ export default class SessionManager {
             log.info('Tried creating session before webserver started!');
             return undefined;
         }
+
+        //Create new User ID
         const newId = Utils.firstMissingPositive(this.usedIds);
         this.usedIds.push(newId);
         log.info('Creating new Session by ' + socket.userName + ', name: ' + sessionName + ', id: ' + newId);
+
+        //Load default config for selected central object
         const defaultConfig = this.dataProvider.getDefaultObjectConfig(objectConfig.objectType)
         defaultConfig.objectType = objectConfig.objectType;
+
+        //Init Session
         const newSession = new Session(newId, socket.userName || 'defaultUser',
             sessionName,
             defaultConfig,
@@ -120,6 +131,8 @@ export default class SessionManager {
             this.dataProvider,
             this.wsServer);
         log.info('Session created. Adding host to session');
+
+        //Add creator to new sesion
         newSession.currentUsers.push( ActiveUser.toActiveUser({ 
             userId: socket.userId || '-1',
             position: { x: 0, y: 0, z: 0 },
@@ -128,12 +141,17 @@ export default class SessionManager {
         log.info('Writing Session to file');
         this.dataProvider.createSession(newSession.state.data);
         this.sessionList.push(newSession);
+
+        //Start Session loop
         newSession.startLoop();
         this.wsServer.sendEvent(new ClientJoin(newSession.currentUsers[0]).toJson(), socket);
         log.info('Session created');
         return newSession;
     }
 
+    //Atm all sessions are loaded. This might be suboptimal for performance when multiple empty sessions 
+    //are permanently running. Atm though this isnt too much of a problem. If this project/server
+    //was to ever be used in production though, this would have to be changed
     loadAllSessions(): void {
         const ws = this.wsServer;
         if(ws === undefined) {
@@ -142,8 +160,9 @@ export default class SessionManager {
         }
         log.info('Loading all Sessions. Consider changing this when multiple sessions are created');
         this.dataProvider.getSessions().forEach((sName) => {
-            log.info('Loading Session ' + sName);
             const sData = this.dataProvider.readSessionData(sName);
+
+            //Create new session with proper state data
             const newSession = new Session(sData.id,
                 sData.host, sData.sessionName,
                 sData.objectConfig,
@@ -152,6 +171,8 @@ export default class SessionManager {
                 ws);
             this.sessionList.push(newSession);
             this.usedIds.push(newSession.SessionID);
+
+            //Start Session loop
             newSession.startLoop();
             log.info('Session ' + sName + ' loaded. Central Object: ' + newSession.state.data.objectConfig.objectType + ' with ' + newSession.state.data.notes.length + ' Notes.');
         })
@@ -191,7 +212,10 @@ export default class SessionManager {
 
     editNote(userId: number, message: string): void {
         const s = this.getUsersSession(userId);
-        if(s === undefined) return;
+        if(s === undefined) {
+            log.info('Could not find users Session!');
+            return;
+        };
         s.editNote(userId, JSON.parse(message));
     }
 

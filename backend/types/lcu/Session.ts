@@ -11,7 +11,7 @@ import logger from '../../logging';
 import Timeout = NodeJS.Timeout;
 import Utils from '../../Utils';
 import DeleteNoteEvent from '../events/DeleteNoteEvent';
-import EditNoteEvent from '../events/EditNoteEvent';
+import EditNoteEvent, { EditNoteEventType } from '../events/EditNoteEvent';
 import NewNoteEvent from '../events/NewNoteEvent';
 import Note from '../containers/Note';
 import ObjectConfigChangeEvent from '../events/ObjectConfigChangeEvent';
@@ -85,7 +85,6 @@ export class Session extends EventEmitter {
     log.info(`${activeUser.socket.userName} | ${activeUser.activeId} joined Session ${this.SessionID}`);
 
     this.sendEventToUsers(new ClientJoin(activeUser).toJson());
-    this.sendAllNotesToUser(activeUser);
     return this;
   }
 
@@ -121,6 +120,8 @@ export class Session extends EventEmitter {
     this.SessionAge += 0 - this.lastUpdate;
   }
 
+
+  //Updates a users position on the server
   updateUsersPosition(message: string): void {
     const jsonObj = JSON.parse(message);
     const u = this.currentUsers.find((u) => u.activeId === jsonObj.userId);
@@ -132,7 +133,10 @@ export class Session extends EventEmitter {
     u.rotation = jsonObj.updatedRotation;
   }
 
+  //Determines if user positions have changed. If so, send all new positions to all in the session
   updatePositions(): void {
+
+    //Users with updated positions
     const changedClients: Array<ActiveUser> = []
     this.currentUsers.forEach(u => {
       if (u.positionChanged) {
@@ -140,12 +144,16 @@ export class Session extends EventEmitter {
         u.positionChanged = false;
       }
     });
+    //Do not send an event if no changes have taken place
     if (changedClients.length === 0) {
       return;
     }
+
+    //Send single event with all new positions
     this.sendTextToUsers(new ClientPositionEvent(changedClients).toJson());
   }
 
+  //Update the configuration of the central object for all users
   updateObjectConfig(oConf: ObjectConfig): void {
     this.state.data.objectConfig.rotation = oConf.rotation;
     this.state.data.objectConfig.scale = oConf.scale;
@@ -159,22 +167,47 @@ export class Session extends EventEmitter {
       return;
     }
 
+    //Create new note id
     message.note.id = this.generateNoteId();
     this.state.data.notes.push(message.note);
+
+    //write changes to file
     this.dataProvider.createNote(this.state.data, message.note);
 
     this.sendEventToUsers(new NewNoteEvent(message.note));
   }
 
   editNote(userId: number, message: EditNoteEvent): void {
-    this.state.data.notes.forEach(n => {
-      if (n.id == message.note.id) {
-        n = message.note;
-      }
+    const note = this.state.data.notes.find((n) => n.id === message.note.id);
+    if (note === undefined) {
+      log.info('Could not find Note to edit');
+      return;
+    }
+    log.info('Overwriting Note #' + note!.id + '. Old Pos: (' + note!.pos.x + ', ' + + note!.pos.y + ', ' + note!.pos.z + '), new Pos: (' + message.note.pos + ', ' + + message.note.pos.y + ', ' + message.note.pos.z + ')');
+
+    //determine update type
+    switch (message.eventSubtype) {
+      case EditNoteEventType.content:
+        note.content = message.note.content;
+        break;
+      case EditNoteEventType.position:
+        note.pos = message.note.pos;
+        break;
+      case EditNoteEventType.type:
+        note.type = message.note.type;
+        break;
+    }
+
+    this.state.data.notes = this.state.data.notes.filter((n) => {
+      n.id !== note.id;
     });
+
+    this.state.data.notes.push(note);
+
+    //write changes to file
     this.dataProvider.editNote(this.state.data, message.note);
 
-    this.sendEventToUsers(new EditNoteEvent(message.note))
+    this.sendEventToUsers(new EditNoteEvent(message.note, message.eventSubtype))
   }
 
   deleteNote(userId: number, message: DeleteNoteEvent): void {
@@ -183,14 +216,18 @@ export class Session extends EventEmitter {
       log.info('User tried falsifying their identity. Kinda WeirdChamp');
     }
 
-    this.dataProvider.deleteNote(this.state.data, message.id);
+    //Remove Note from state data
     this.state.data.notes = this.state.data.notes.filter((n) => {
       n.id != message.id;
-    })
+    });
+
+    //write changes to file
+    this.dataProvider.deleteNote(this.state.data, message.id);
 
     this.sendEventToUsers(new DeleteNoteEvent(userId, message.id));
   }
 
+  //Generate new unique positive Note ID
   generateNoteId(): number {
     const currentIDs: number[] = [];
     this.state.data.notes.forEach((n) => currentIDs.push(n.id || 0));

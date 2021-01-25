@@ -14,6 +14,7 @@ const log = logger('DataProvider');
 const sessionFolder = './cache/sessionData/';
 const objectFolder = './cache/objectData/'
 
+//Delete Folder and all its contents
 const deleteFolderRecursive = function (location: string): void {
     if (fs.existsSync(location)) {
         fs.readdirSync(location).forEach((file, index) => {
@@ -28,17 +29,21 @@ const deleteFolderRecursive = function (location: string): void {
     }
 };
 
+//Get all Directories in a specified Directory
 const getDirectories = (source: fs.PathLike): string[] =>
     fs.readdirSync(source, { withFileTypes: true })
         .filter(dirent => dirent.isDirectory())
         .map(dirent => dirent.name)
 
+//Get all Files in a specified Directory
 const getFiles = (source: fs.PathLike): string[] =>
     fs.readdirSync(source, { withFileTypes: true })
         .filter(dirent => dirent.isFile())
         .map(dirent => dirent.name)
 
 export default class DataProvider extends EventEmitter {
+    //Gets session information from file system
+    //Each session is stored in its own folder
     getCurrentData(sessionID: string): Promise<Session> {
 
         const sessionPath = path.join(GlobalContext.commandLine.resourcePath, sessionID);
@@ -58,6 +63,7 @@ export default class DataProvider extends EventEmitter {
         })
     }
 
+    //Write session state data to disk. async
     writeCurrentData(data: StateData): void {
         const sFolder = sessionFolder + data.id + '/';
         const fileName = path.join(sFolder, 'SessionState.json');
@@ -69,11 +75,13 @@ export default class DataProvider extends EventEmitter {
         });
     }
 
+    //Write session state data to disk. sync
     writeCurrentDataSync(data: StateData): void {
         const sFolder = sessionFolder + data.id + '/';
         fs.writeFileSync(path.join(sFolder, 'SessionState.json'), JSON.stringify(data, null, 2), { encoding: 'utf-8' });
     }
 
+    //Read session state data from disk
     readSessionData(sessionId: number): StateData {
         const sFolder = sessionFolder + sessionId + '/';
         const data = fs.readFileSync(path.join(sFolder, 'SessionState.json'), 'utf-8');
@@ -83,6 +91,7 @@ export default class DataProvider extends EventEmitter {
         return tempSd;
     }
 
+    //Returns a list of all sessions stored on disk
     getSessions(): Array<number> {
         const stringFolders = getDirectories(sessionFolder);
         const intFolders: Array<number> = [];
@@ -90,6 +99,7 @@ export default class DataProvider extends EventEmitter {
         return intFolders;
     }
 
+    //Get all notes and their content from disk
     getNotes(sessionId: number): Array<Note> {
         const specificSessionFolder = sessionFolder + sessionId + '/';
         if (!fs.existsSync(specificSessionFolder)) {
@@ -108,6 +118,7 @@ export default class DataProvider extends EventEmitter {
         return outNotes;
     }
 
+    //Gets default object configuration used when loading a session for the first time and determining default object scale/rotation
     getDefaultObjectConfig(objectType: string): ObjectConfig {
         const specificObject = objectFolder + objectType + '/';
         const temp = JSON.parse(fs.readFileSync(path.join(specificObject, 'DefaultConfig.json'), 'utf-8'));
@@ -115,6 +126,7 @@ export default class DataProvider extends EventEmitter {
     }
 
 
+    //Creates session folder and all required subfolders
     createSession(data: StateData): void {
         const specificObject = objectFolder + data.objectConfig.objectType + '/';
 
@@ -141,11 +153,14 @@ export default class DataProvider extends EventEmitter {
 
         this.writeCurrentData(data);
 
+        //Copy object data from object list directory to the new session incase we somehow want to ever change it.
+        //For now kind of unnescesary
         log.info('Copying all object Data to Session folder');
         fse.copySync(specificObject, sessionObjectFolder, { overwrite: true });
     }
 
 
+    //Remove Session from Disk
     deleteSession(sessionId: number): void {
         const specificSessionFolder = sessionFolder + sessionId + '/';
 
@@ -169,6 +184,7 @@ export default class DataProvider extends EventEmitter {
         this.writeNote(sessionData, newNote);
     }
 
+    //Write Note to disk. Can overrite existing notes
     writeNote(sessionData: StateData, note: Note): void {
         const sessionId = sessionData.id;
         if (!fs.existsSync(sessionFolder)) {
@@ -186,11 +202,15 @@ export default class DataProvider extends EventEmitter {
         const fileName = path.join(specificSessionFolder, 'Note_' + note.id + '.json');
 
         fs.writeFile(fileName, JSON.stringify(note, null, 2), function writeJSON(err) {
-            if (err) return log.info('Could not write Note:' + err);
+            if (err)  {
+                log.info('Could not write Note:' + err);
+                return;
+            }
             log.info('Writing note to ' + fileName);
         });
     }
 
+    //Remove Note in given Session from Disk
     deleteNote(sessionData: StateData, noteId: number): void {
         const sessionId = sessionData.id;
         if (!fs.existsSync(sessionFolder)) {
@@ -208,14 +228,17 @@ export default class DataProvider extends EventEmitter {
         const fileName = path.join(specificSessionFolder, 'Note_' + noteId + '.json');
 
         fs.unlink(fileName, (err) => {
-            log.info('Could not delete Note: ' + err);
-            return;
-        })
+            if(err !== null)
+                log.info('Note removed');
+            else
+                log.info('Could not remove Note: ' + err);
+        });
 
         log.info('Note removed');
     }
 
 
+    //Reads and returns Note from Disk
     readNote(sessionId: number, noteId: number): Note {
         if (!fs.existsSync(sessionFolder)) {
             log.warn('Session folder not init! Returning');
