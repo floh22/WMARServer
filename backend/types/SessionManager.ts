@@ -201,6 +201,7 @@ export default class SessionManager {
             return;
         }
         this.unloadSession(s);
+        this.sessionList.filter((session) => session.SessionID !== sessionId);
         this.dataProvider.deleteSession(sessionId);
     }
 
