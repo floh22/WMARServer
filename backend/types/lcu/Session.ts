@@ -155,14 +155,18 @@ export class Session extends EventEmitter {
 
   //Update the configuration of the central object for all users
   updateObjectConfig(oConf: ObjectConfig): void {
+    log.info('Object Config update');
     this.state.data.objectConfig.rotation = oConf.rotation;
     this.state.data.objectConfig.scale = oConf.scale;
+
+    this.dataProvider.writeCurrentDataSync(this.state.data);
 
     this.sendEventToUsers(new ObjectConfigChangeEvent(this.state.data.objectConfig));
   }
 
   createNote(userId: number, message: NewNoteEvent): void {
-    if (message.note.id !== -1) {
+    log.info(JSON.stringify(message));
+    if (!message.note || message.note.id !== -1) {
       log.info('Tried creating invalid Note');
       return;
     }
@@ -183,11 +187,13 @@ export class Session extends EventEmitter {
       log.info('Could not find Note to edit');
       return;
     }
-    log.info('Overwriting Note #' + note!.id + '. Old Pos: (' + note!.pos.x + ', ' + + note!.pos.y + ', ' + note!.pos.z + '), new Pos: (' + message.note.pos + ', ' + + message.note.pos.y + ', ' + message.note.pos.z + ')');
+    log.info('Overwriting Note #' + note!.id + '. Old Pos: (' + note!.pos.x + ', ' + + note!.pos.y + ', ' + note!.pos.z + '), new Pos: (' + message.note.pos.x + ', ' + + message.note.pos.y + ', ' + message.note.pos.z + ')');
 
     //determine update type
+    /*
     switch (message.eventSubtype) {
       case EditNoteEventType.content:
+        log.info('new message content: ' + message.note.content);
         note.content = message.note.content;
         break;
       case EditNoteEventType.position:
@@ -198,16 +204,18 @@ export class Session extends EventEmitter {
         break;
     }
 
+    */
     this.state.data.notes = this.state.data.notes.filter((n) => {
       n.id !== note.id;
     });
 
-    this.state.data.notes.push(note);
+    this.state.data.notes.push(message.note);
 
     //write changes to file
     this.dataProvider.editNote(this.state.data, message.note);
 
-    this.sendEventToUsers(new EditNoteEvent(message.note, message.eventSubtype))
+    log.info(JSON.stringify(message.note));
+    this.sendEventToUsers(message)
   }
 
   deleteNote(userId: number, message: DeleteNoteEvent): void {

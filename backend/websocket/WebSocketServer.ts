@@ -218,17 +218,17 @@ class WebSocketServer {
         this.sessionManager.deleteSession(JSON.parse(message).sessionId);
         break;
       case 'objectConfig':
-        userId = socket.userId;
-        if (userId === undefined) {
+        const userId8 = socket.userId;
+        if (userId8 === undefined) {
           log.info('Unregistered client message. Ignoring');
           break;
         }
-        const session = this.sessionManager.getUsersSession(userId);
+        const session = this.sessionManager.getUsersSession(userId8);
         if (session === undefined) {
           log.info('Attempted loading invalid Session');
           break;
         }
-        session.updateObjectConfig(JSON.parse(message));
+        session.updateObjectConfig(JSON.parse(message).config);
         break;
       case 'sessionList':
         this.sendEvent(new SessionListEvent(this.sessionManager.getReducedSessions()), socket);
