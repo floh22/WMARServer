@@ -1,4 +1,6 @@
 export default class ObjectPosition {
+
+    //Vector3
     x: number;
     y: number;
     z: number;

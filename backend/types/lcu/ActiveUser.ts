@@ -2,6 +2,7 @@ import CustomSocket from '../../websocket/CustomSocket';
 import ObjectPosition from '../containers/ObjectPosition';
 import ObjectRotation from '../containers/ObjectRotation';
 
+//Each client in a session is represented as an ActiveUser
 export default class ActiveUser {
     activeId: number;
     socket: CustomSocket;
@@ -17,6 +18,7 @@ export default class ActiveUser {
         this.positionChanged = false;
     }
 
+    //Custom serialization to remove socket from serialized data since that information never has to be sent to clients
     toJson(): any {
         return { activeId: this.activeId, position: this.position, rotation: this.rotation, userName: this.socket.userName || 'defaultUser' };
     }

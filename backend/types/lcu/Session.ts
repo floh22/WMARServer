@@ -20,15 +20,30 @@ import ClientJoin from '../events/ClientJoin';
 
 const log = logger('Session');
 
+//Session containing users, central object, notes, and all other information needed
 export class Session extends EventEmitter {
 
   SessionID: number;
+
+  //DEPRECATED
   SessionAge: number
+
+  //Current users in the session
   currentUsers: Array<ActiveUser> = [];
+
+  //data provider used from reading from/writing to disk
   dataProvider: DataProvider;
+
+  //Current State of the session
   state: State;
+
+  //Network connection
   wsServer: WebSocketServer;
+
+  //When the session was last updated
   lastUpdate = Date.now();
+
+  //Timer used for ticking the session
   timeout?: Timeout;
 
 
@@ -46,10 +61,12 @@ export class Session extends EventEmitter {
     this.state.data.notes = notes;
   }
 
+  //Start ticking session with set tick rate of x times per second
   startLoop(): void {
     this.timeout = setInterval(() => this.runLoop(), 40);
   }
 
+  //Stop ticking session
   stopLoop(): void {
     const t = this.timeout;
     if (t === undefined) {
@@ -59,7 +76,13 @@ export class Session extends EventEmitter {
     clearTimeout(t);
   }
 
+
+  //Each tick of a session
   runLoop(): void {
+    //No need to tick session if noone is in it
+    if(this.currentUsers.length === 0) {
+      return;
+    }
     this.updatePositions();
     const newTime = Date.now();
     const diff = newTime - this.lastUpdate;
@@ -68,54 +91,69 @@ export class Session extends EventEmitter {
     this.lastUpdate = Date.now();
   }
 
+  //Close session
   unload(): void {
+
+    //Kick everyone and notify them
     this.kickAllUsers();
     this.sendEventToUsers(new DeleteSessionEvent(this.SessionID));
     this.currentUsers = [];
+    //stop ticking
     this.stopLoop();
+
+    //write session data to disk
     this.dataProvider.writeCurrentDataSync(this.state.data);
   }
 
+  //If a session currently has a given user in the session
   hasUser(userId: number): boolean {
     return (this.currentUsers.find((u) => u.activeId === userId) !== undefined);
   }
 
+  //Add user to session
   addUser(activeUser: ActiveUser): Session {
     this.currentUsers.push(activeUser);
     log.info(`${activeUser.socket.userName} | ${activeUser.activeId} joined Session ${this.SessionID}`);
 
+    //Send the join to all other users in the session
     this.sendEventToUsers(new ClientJoin(activeUser).toJson());
     return this;
   }
 
+  //Send an event to all users currently in the session
   sendEventToUsers(e: ClientEvent): void {
     this.currentUsers.forEach(u => {
       u.socket.send(JSON.stringify(e));
     });
   }
 
+  //Send a string to all users currently in the session
   sendTextToUsers(m: string): void {
     this.currentUsers.forEach(u => {
       u.socket.send(m);
     })
   }
 
+  //Send all notes in the session to a given user, usually on join
   sendAllNotesToUser(user: ActiveUser): void {
     this.state.data.notes.forEach(note => {
       this.sendNoteToUser(user, note);
     });
   }
 
+  //Send single Note to user
   sendNoteToUser(user: ActiveUser, note: Note): void {
     user.socket.send(JSON.stringify(new NewNoteEvent(note)));
   }
 
+  //Kick all users from the session
   kickAllUsers(): void {
     this.currentUsers.forEach((u) => {
       this.wsServer.sendEvent(new ClientLeaveEvent(u.activeId), u.socket);
     });
   }
 
+  //DEPRECATED
   updateTime(): void {
     this.SessionAge += 0 - this.lastUpdate;
   }
@@ -164,6 +202,8 @@ export class Session extends EventEmitter {
     this.sendEventToUsers(new ObjectConfigChangeEvent(this.state.data.objectConfig));
   }
 
+
+  //Create a new note and save it to disk
   createNote(userId: number, message: NewNoteEvent): void {
     log.info(JSON.stringify(message));
     if (!message.note || message.note.id !== -1) {
@@ -178,9 +218,12 @@ export class Session extends EventEmitter {
     //write changes to file
     this.dataProvider.createNote(this.state.data, message.note);
 
+    //Send the Note to all users in the session
     this.sendEventToUsers(new NewNoteEvent(message.note));
   }
 
+
+  //Edit an existing note
   editNote(userId: number, message: EditNoteEvent): void {
     const note = this.state.data.notes.find((n) => n.id === message.note.id);
     if (note === undefined) {
@@ -205,19 +248,27 @@ export class Session extends EventEmitter {
     }
 
     */
+
+    //Remove the old note info
     this.state.data.notes = this.state.data.notes.filter((n) => {
       n.id !== note.id;
     });
 
+
+    //Push the new note info
     this.state.data.notes.push(message.note);
 
     //write changes to file
     this.dataProvider.editNote(this.state.data, message.note);
 
+
+    //Send the update event to all users in the session
     log.info(JSON.stringify(message.note));
     this.sendEventToUsers(message)
   }
 
+
+  //Remove note from memory and disk
   deleteNote(userId: number, message: DeleteNoteEvent): void {
 
     if (userId !== message.userId) {
@@ -232,6 +283,8 @@ export class Session extends EventEmitter {
     //write changes to file
     this.dataProvider.deleteNote(this.state.data, message.id);
 
+
+    //Send event to users
     this.sendEventToUsers(new DeleteNoteEvent(userId, message.id));
   }
 

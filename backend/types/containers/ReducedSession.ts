@@ -1,6 +1,8 @@
 import { Session } from '../lcu/Session';
 
 export default class ReducedSession {
+
+    //Session Meta Data used for session lists
     users: Array<string> = [];
     sessionId: number;
     centralObject: string;

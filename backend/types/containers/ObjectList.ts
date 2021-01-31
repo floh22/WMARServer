@@ -8,6 +8,7 @@ fs.readdirSync(source, { withFileTypes: true })
   .filter(dirent => dirent.isDirectory())
   .map(dirent => dirent.name);
 
+//List of all object types available on the server
 export default class ObjectList {
     objects: Array<string> = [];
 

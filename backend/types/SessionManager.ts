@@ -15,6 +15,8 @@ import UpdateUserInfoEvent from './events/UpdateUserInfoEvent';
 
 const log = logger('sessionM.');
 
+//Manages all sessions running on the server
+//Responsible for loading/unloading sessions and delegating some events to the proper session
 export default class SessionManager {
     sessionList: Session[] = [];
     usedIds: Array<number> = [];
@@ -36,10 +38,12 @@ export default class SessionManager {
         return outSessions;
     }
 
+    //Get a session by userId
     getUsersSession(userId: number): Session | undefined {
         return this.sessionList.find((s) => s.hasUser(userId))
     }
 
+    //Get user by Id
     getUser(userId: number): ActiveUser | undefined {
         const userSession = this.sessionList.find((s) => s.hasUser(userId));
         if (userSession !== undefined) {
@@ -47,6 +51,7 @@ export default class SessionManager {
         }
     }
 
+    //Get user by socket. Im pretty sure this is pretty inefficient but i dont know nor care at this point :)
     getUserBySocket(socket: CustomSocket): ActiveUser | undefined {
         let user = undefined;
         this.sessionList.forEach((s) => {
@@ -67,10 +72,12 @@ export default class SessionManager {
         return Utils.firstMissingPositive(currentIDs);
     }
 
+    //Get session by Id
     getSession(sessionId: number): Session | undefined {
         return this.sessionList.find((s) => s.SessionID === sessionId);
     }
 
+    //Add a user to session and return the session the user was added to
     addUserToSession(sessionId: number, activeUser: ActiveUser): Session | undefined {
         const session = this.getSession(sessionId);
         if (session === undefined) {
@@ -108,13 +115,15 @@ export default class SessionManager {
         session!.sendEventToUsers(new UpdateUserInfoEvent(s.userId!, e.userName));
     }
 
+
+    //Create a new session from scratch using data sent by the client
     createSession({ sessionName, objectConfig }: any, socket: CustomSocket): Session | undefined {
         if(this.wsServer === undefined) {
             log.info('Tried creating session before webserver started!');
             return undefined;
         }
 
-        //Create new User ID
+        //Create new Server ID
         const newId = Utils.firstMissingPositive(this.usedIds);
         this.usedIds.push(newId);
         log.info('Creating new Session by ' + socket.userName + ', name: ' + sessionName + ', id: ' + newId);
@@ -139,11 +148,17 @@ export default class SessionManager {
             rotation: { w: 0, x: 0, y: 0, z: 0 } }, 
             socket));
         log.info('Writing Session to file');
+
+        //Write new session to disk
         this.dataProvider.createSession(newSession.state.data);
+
+        //Track session
         this.sessionList.push(newSession);
 
         //Start Session loop
         newSession.startLoop();
+
+        //Send join event to user to add them to the sesssion on their client
         this.wsServer.sendEvent(new ClientJoin(newSession.currentUsers[0]).toJson(), socket);
         log.info('Session created');
         return newSession;
@@ -179,6 +194,7 @@ export default class SessionManager {
         log.info('All Sessions loaded');
     }
 
+    //Unload a single session
     unloadSession(session: Session): void {
         log.info('Unloading Session' + session.SessionID);
         session.unload();
@@ -186,6 +202,7 @@ export default class SessionManager {
         log.info('Session' + session.SessionID + ' unloaded');
     }
 
+    //Unload all sessions running currently
     closeAllSessions(): void {
         log.info('Closing all sessions');
         this.sessionList.forEach((s) => {
@@ -194,6 +211,7 @@ export default class SessionManager {
         log.info('All sessions closed');
     }
 
+    //Permanently remove a session and delete it from disk
     deleteSession(sessionId: number): void {
         const s = this.getSession(sessionId)
         if(s === undefined) {
@@ -205,12 +223,14 @@ export default class SessionManager {
         this.dataProvider.deleteSession(sessionId);
     }
 
+    //Delegate note creation to proper session
     createNote(userId: number, message: string): void {
         const s = this.getUsersSession(userId);
         if(s === undefined) return;
         s.createNote(userId, JSON.parse(message));
     }
 
+    //Delegate note editing to proper session
     editNote(userId: number, message: string): void {
         const s = this.getUsersSession(userId);
         if(s === undefined) {
@@ -220,6 +240,7 @@ export default class SessionManager {
         s.editNote(userId, JSON.parse(message));
     }
 
+    //Delegate note deletion to proper session
     deleteNote(userId: number, message: string): void {
         const s = this.getUsersSession(userId);
         if(s === undefined) return;

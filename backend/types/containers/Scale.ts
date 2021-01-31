@@ -1,4 +1,6 @@
 export default class ObjectScale {
+
+    //Vector3
     x: number;
     y: number;
     z: number;

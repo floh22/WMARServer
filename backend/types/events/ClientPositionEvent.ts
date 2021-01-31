@@ -17,6 +17,8 @@ export default class ClientPositionEvent implements ClientEvent {
         this.updatedRotation = new ObjectRotation(0,0,0,0);
     }
 
+    //For each client with an updated Transform add all needed information to a list of updated clients
+    //All updated transforms for this tick are therefor sent in a single packet reducing overhead
     toJson(): string {
         const clients: Array<{activeId: number; position: ObjectPosition; rotation: ObjectRotation }> = []
         this.fullClients.forEach((c) => {

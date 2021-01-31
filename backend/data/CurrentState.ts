@@ -1,6 +1,8 @@
 import { Session } from '../types/lcu/Session';
 
 export class CurrentState {
+  //DEPRECATED
+  //Current State of a Session
   isSessionActive: boolean;
   session: Session;
 

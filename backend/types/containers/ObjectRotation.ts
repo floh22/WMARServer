@@ -1,4 +1,6 @@
 export default class ObjectRotation {
+
+    //Quaternion
     w: number;
     x: number;
     y: number;

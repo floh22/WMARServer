@@ -2,6 +2,7 @@ import Rotation from './ObjectRotation';
 import Scale from './Scale';
 
 export default class ObjectConfig {
+    //Transform of an object in a session
     objectType: string;
     scale: Scale;
     rotation: Rotation;

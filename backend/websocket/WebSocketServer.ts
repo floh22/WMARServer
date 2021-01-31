@@ -114,14 +114,17 @@ class WebSocketServer {
     //Drop unresponsive clients
     this.clientList.forEach((c) => {
       if (c.isAlive) {
+        //If a socket has responded to a heartbeat before, reset them and send a new one
         c.send(heartbeatSerialized)
         c.isAlive = false;
       } else {
+        //Socket did not respond to last heartbeat, drop it
         log.info('Heartbeat not replied to in time. Dropping client');
         const activeUser = this.sessionManager.getUserBySocket(c);
         if (activeUser === undefined) {
           log.info('Couldnt map Websocket to ActiveUser. Were they not in a session?');
         } else {
+          //The user was in a session when they disconnected. Properly disconnect them
           this.sessionManager.dropUser(activeUser.activeId);
         }
         this.clientList = this.clientList.filter((s) => s !== c);
